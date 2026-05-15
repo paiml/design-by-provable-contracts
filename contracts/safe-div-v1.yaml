@@ -1,0 +1,105 @@
+metadata:
+  version: 1.0.0
+  created: '2026-05-15'
+  author: design-by-provable-contracts Module 4
+  description: |
+    Provable contract for the safe_div kernel used as the M4 proptest
+    demo target. The kernel `fn safe_div(a: i32, b: i32) -> Option<i32>`
+    returns None on the two overflow cases of i32 division
+    (`b == 0` and `(i32::MIN, -1)`) and `Some(a / b)` for every other
+    input. The function is total over the input i32 × i32 domain and
+    never panics. Verified via proptest with shrinking and a YAML
+    contract that pv validates at CI time.
+  references:
+  - 'Rust i32::checked_div: https://doc.rust-lang.org/std/primitive.i32.html#method.checked_div'
+  - 'proptest: https://docs.rs/proptest'
+  - 'aprender-contracts: https://github.com/paiml/aprender'
+equations:
+  safe_div:
+    formula: |
+      safe_div(a, b) =
+        None       when b == 0,
+        None       when (a, b) == (i32::MIN, -1),
+        Some(a/b)  otherwise
+    domain: (a, b) ∈ i32 × i32
+    codomain: Option<i32>
+    invariants:
+    - safe_div(_, 0) == None
+    - safe_div(i32::MIN, -1) == None
+    - for any other (a, b), safe_div(a, b) == Some(a / b)
+    - safe_div never panics
+    - safe_div is total over i32 × i32
+    preconditions:
+    - a and b are finite i32
+    postconditions:
+    - result.is_none() iff (b == 0 or (a == i32::MIN and b == -1))
+    - result.is_some() implies result.unwrap() == a / b
+    lean_theorem: Theorems.SafeDivKernel
+    guarantees:
+      shapes:
+        output: { dims: ["1"] }
+      constraints:
+      - output is Option<i32>
+      - output is Some(a / b) when both overflow guards pass
+proof_obligations:
+- type: invariant
+  property: divide by zero is None
+  formal: forall a, safe_div(a, 0) == None
+  applies_to: all
+- type: invariant
+  property: i32 min over neg one is None
+  formal: safe_div(i32::MIN, -1) == None
+  applies_to: all
+- type: invariant
+  property: never panics
+  formal: forall a, b, safe_div(a, b) terminates without panic
+  applies_to: all
+- type: equivalence
+  property: agrees with checked_div
+  formal: forall a, b, safe_div(a, b) == a.checked_div(b)
+  applies_to: all
+- type: equivalence
+  property: agrees with native operator on safe inputs
+  formal: |
+    forall (a, b) with b != 0 and not (a == i32::MIN and b == -1),
+    safe_div(a, b) == Some(a / b)
+  applies_to: all
+falsification_tests:
+- id: FALSIFY-DV-001
+  rule: divide by zero is None
+  prediction: safe_div(a, 0) returns None for every a
+  test: direct test across i32::MIN, -1, 0, 1, i32::MAX
+  if_fails: Implementation does not guard the b == 0 case and panics
+- id: FALSIFY-DV-002
+  rule: i32 min over neg one is None
+  prediction: safe_div(i32::MIN, -1) returns None
+  test: direct test
+  if_fails: Implementation uses unchecked / and overflows i32
+- id: FALSIFY-DV-003
+  rule: agrees with native operator on safe inputs
+  prediction: safe_div(a, b) == Some(a / b) for every safe (a, b)
+  test: proptest with random a, b in i32 × i32 filtered to safe region
+  if_fails: Implementation diverges from native integer division
+- id: FALSIFY-DV-004
+  rule: never panics
+  prediction: safe_div(a, b) terminates normally for every (a, b)
+  test: proptest with random a, b in i32 × i32 (no filtering)
+  if_fails: Implementation panics on a divide-by-zero or overflow input
+- id: FALSIFY-DV-005
+  rule: round-trip on exact divisions
+  prediction: for any (q, b) with b != 0 and a = q * b in i32, safe_div(a, b) == Some(q)
+  test: proptest with random q in i32 and b in i32 \ {0}
+  if_fails: Implementation rounds or truncates in a non-standard direction
+kani_harnesses:
+- id: KANI-DV-001
+  obligation: never panics
+  bound: 32
+  strategy: bounded_int
+  solver: cadical
+qa_gate:
+  id: F-DV-001
+  name: safe-div-v1 Contract
+  description: Quality gate for the safe_div kernel used in M4 proptest demo
+  checks:
+  - validation
+  - falsification

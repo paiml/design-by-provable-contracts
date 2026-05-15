@@ -1,0 +1,18 @@
+[package]
+name = "m4-proptest"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Module 4 demo: proptest-verified safe_div kernel governed by a pv-validated YAML contract."
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "safediv-demo"
+path = "src/main.rs"
+
+[dev-dependencies]
+proptest = "1"

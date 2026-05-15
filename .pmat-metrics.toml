@@ -1,0 +1,25 @@
+# PMAT quality thresholds for design-by-provable-contracts — the
+# companion repo for Rust for Data Engineering c7 "Design by Provable
+# Contracts". The repo is a teaching artifact: 3 small crates that
+# demonstrate type-system invariants, typestate programming, and
+# property-based testing under a YAML-declared contract.
+
+[quality]
+# 100% line coverage is the gate (excluding main.rs / src/bin/ thin
+# shells — see ci.yml --ignore-filename-regex). Coverage of the
+# library logic is the runtime half of "provable contract"; the
+# compile-time half is that `cargo build` accepts the workspace.
+min_coverage = 100.0
+
+# Every crate's clippy must be silent under `-D warnings`. There is no
+# planted-lint lesson here (unlike c9 m3-lint).
+max_clippy_warnings = 0
+
+# Demo crates stay shallow on purpose so learners can read them
+# end-to-end in one sitting. The proptest harness is the only
+# place where complexity rises slightly.
+max_cyclomatic_complexity = 10
+
+# Lean by construction — Money + Connection + safe_div all fit in
+# under 40 lines each before tests.
+max_function_length = 40

@@ -1,0 +1,109 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  gate:
+    name: gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo registry + target
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: design-by-provable-contracts
+          cache-all-crates: true
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Build workspace
+        run: cargo build --workspace --locked
+
+      - name: Test workspace (incl. proptest with shrinking)
+        run: cargo test --workspace --locked
+
+      # 100% line coverage gate. main.rs and src/bin/ shells are
+      # excluded — they're thin pattern-matches that delegate to lib
+      # `run()` functions, so coverage measures real logic only.
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
+
+      - name: 100% line-coverage gate
+        run: |
+          cargo llvm-cov --workspace --locked \
+            --ignore-filename-regex 'main\.rs|src/bin/' \
+            --fail-under-lines 100
+
+      - name: Clippy (deny warnings)
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: Install pv (aprender-contracts-cli)
+        run: cargo install --locked aprender-contracts-cli
+
+      - name: Validate safe-div contract via pv
+        run: pv validate contracts/safe-div-v1.yaml
+
+      # Runtime contract proofs — each binary must exit zero with the
+      # contract marker. Compile-time proofs for M2 + M3 are that the
+      # workspace BUILDS at all (mixing tags / states is a compile
+      # error in lib code), so `cargo build` above is half the proof.
+      - name: Prove M2 contract at runtime
+        run: |
+          out=$(cargo run --locked -q -p m2-newtype --bin money-demo)
+          echo "$out"
+          echo "$out" | grep -q "Money<C> + Money<C>"
+          echo "$out" | grep -q "OK"
+
+      - name: Prove M3 contract at runtime
+        run: |
+          out=$(cargo run --locked -q -p m3-typestate --bin typestate-demo)
+          echo "$out"
+          echo "$out" | grep -q "typestate Connection"
+          echo "$out" | grep -q "OK"
+
+      - name: Prove M4 contract at runtime
+        run: |
+          stdout=$(cargo run --locked -q -p m4-proptest --bin safediv-demo -- 10 2)
+          echo "$stdout" | grep -q "^5$"
+          # Also exercise both contract-defined None branches.
+          set +e
+          cargo run --locked -q -p m4-proptest --bin safediv-demo -- 7 0 2>&1 \
+            | grep -q "divide by zero — safe_div returned None per contract"
+          rc_zero=$?
+          cargo run --locked -q -p m4-proptest --bin safediv-demo -- -2147483648 -1 2>&1 \
+            | grep -q "i32::MIN / -1 overflow"
+          rc_overflow=$?
+          set -e
+          [ "$rc_zero" -eq 0 ] && [ "$rc_overflow" -eq 0 ] \
+            || { echo "ERROR: M4 contract markers missing"; exit 1; }
+
+      # PMAT compliance check — advisory, surfaces CB-* score in the
+      # build log without flaking the gate.
+      - name: Install pmat
+        run: cargo install --locked pmat
+
+      - name: pmat comply (advisory)
+        continue-on-error: true
+        run: pmat comply check

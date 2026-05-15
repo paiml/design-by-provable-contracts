@@ -1,0 +1,15 @@
+[package]
+name = "m2-newtype"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Module 2 demo: PhantomData currency tags catch mixed-currency math at compile time."
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "money-demo"
+path = "src/main.rs"
