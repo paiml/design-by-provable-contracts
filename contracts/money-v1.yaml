@@ -1,0 +1,106 @@
+metadata:
+  version: 1.0.0
+  created: '2026-05-15'
+  author: design-by-provable-contracts Module 2
+  description: |
+    Provable contract for the Money<C> newtype used as the M2 currency
+    demo target. The type `Money<C: Currency>` carries a `Decimal`
+    amount and a phantom currency tag `C`. Addition is closed over the
+    SAME currency (`Money<C> + Money<C> -> Money<C>`) and rejected at
+    compile time across currencies (`Money<Usd> + Money<Eur>` is a
+    rustc E0308 type mismatch, NOT a runtime panic). The contract is
+    enforced by the type system; `cargo build` is the compile-time
+    half of the proof and `cargo run -p m2-newtype --bin money-demo`
+    exiting zero is the runtime half. pv validates the YAML at CI
+    time and scores the spec depth + falsification coverage.
+  references:
+  - 'Rust PhantomData: https://doc.rust-lang.org/std/marker/struct.PhantomData.html'
+  - 'rust_decimal: https://docs.rs/rust_decimal'
+  - 'aprender-contracts: https://github.com/paiml/aprender'
+equations:
+  money_add:
+    formula: |
+      Money<C>(a) + Money<C>(b) = Money<C>(a + b)            -- compiles
+      Money<C1>(a) + Money<C2>(b) when C1 != C2 = TYPE-ERROR  -- rustc E0308
+    domain: '(Money<C>, Money<C>) for C: Currency'
+    codomain: Money<C>
+    invariants:
+    - addition is closed under currency C
+    - mixed-currency addition is a compile error, never a runtime check
+    - no runtime if currency != other.currency check exists in the crate
+    - Money<C> is zero-cost over Decimal (PhantomData is unsized)
+    - Display prints the ISO-4217 code via C::code()
+    preconditions:
+    - both operands carry the same currency tag C (statically)
+    - the underlying Decimal addition does not overflow
+    postconditions:
+    - result.amount() == lhs.amount() + rhs.amount()
+    - result currency tag is the same as both operands
+    lean_theorem: Theorems.MoneyAddClosed
+    guarantees:
+      shapes:
+        output: { dims: ["1"] }
+      constraints:
+      - output is Money<C> for the same C as both inputs
+      - output amount is the rust_decimal sum of input amounts
+proof_obligations:
+- type: invariant
+  property: addition is closed under currency
+  formal: 'forall a, b in Money<C>, (a + b) in Money<C>'
+  applies_to: all
+- type: invariant
+  property: mixed-currency rejected at compile time
+  formal: 'Money<Usd> + Money<Eur> does not type-check'
+  applies_to: all
+- type: invariant
+  property: zero runtime currency checks
+  formal: 'm2-newtype crate contains zero `if currency != other.currency`'
+  applies_to: all
+- type: postcondition
+  property: amount is the Decimal sum
+  formal: '(lhs + rhs).amount() == lhs.amount() + rhs.amount()'
+  applies_to: money_add
+- type: postcondition
+  property: currency tag is preserved
+  formal: 'typeof(lhs + rhs) == typeof(lhs) == typeof(rhs)'
+  applies_to: money_add
+falsification_tests:
+- id: FALSIFY-MONEY-001
+  rule: addition is closed under currency
+  prediction: Money<Usd>(a) + Money<Usd>(b) == Money<Usd>(a + b) for any finite a, b
+  test: proptest over (a, b) Decimal pairs in safe range
+  if_fails: Addition diverges from rust_decimal arithmetic
+- id: FALSIFY-MONEY-002
+  rule: mixed-currency rejected at compile time
+  prediction: 'source containing `Money::<Usd>(a) + Money::<Eur>(b)` fails `cargo build` with E0308'
+  test: trybuild compile-fail fixture in tests/compile-fail/mixed-currency.rs
+  if_fails: rustc accepts the mixed addition (broken Add impl)
+- id: FALSIFY-MONEY-003
+  rule: zero runtime currency checks
+  prediction: '`grep -nE "if .*currency.* != .*currency" src/` returns nothing'
+  test: shell grep in CI
+  if_fails: A runtime check has been added; the type-system contract is no longer enforced
+- id: FALSIFY-MONEY-004
+  rule: zero-cost over Decimal
+  prediction: 'size_of::<Money<Usd>>() == size_of::<Decimal>()'
+  test: static_assertions::assert_eq_size in tests
+  if_fails: PhantomData<C> is not zero-sized (impossible by Rust spec; included as a sanity test)
+- id: FALSIFY-MONEY-005
+  rule: currency tag is preserved
+  prediction: 'typeof(Money::<Usd>(a) + Money::<Usd>(b)) == Money<Usd>'
+  test: type-equality assertion in m2-newtype/tests/type_eq.rs
+  if_fails: Addition strips or coerces the currency parameter (broken phantom propagation)
+kani_harnesses:
+- id: KANI-MONEY-001
+  obligation: addition is closed under currency
+  bound: 16
+  strategy: bounded_int
+  solver: cadical
+qa_gate:
+  id: F-MONEY-001
+  name: money-v1 Contract
+  description: Quality gate for the Money<C> newtype used in M2 currency demo
+  checks:
+  - validation
+  - falsification
+  - compile-fail-trybuild
