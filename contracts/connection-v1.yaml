@@ -1,0 +1,121 @@
+metadata:
+  version: 1.0.0
+  created: '2026-05-15'
+  author: design-by-provable-contracts Module 3
+  description: |
+    Provable contract for the Connection<S> typestate used as the M3
+    demo target. The state machine has three states — Closed, Open,
+    Authenticated — encoded as zero-sized marker types. Transitions
+    are consume-return methods: `Connection<Closed>::open() ->
+    Connection<Open>`, `Connection<Open>::authenticate(user) ->
+    Connection<Authenticated>`, `Connection<Authenticated>::query(sql)
+    -> &str`. The `query` method ONLY compiles on `Connection
+    <Authenticated>`; calling `query` on `Connection<Closed>` or
+    `Connection<Open>` is a rustc type error. The contract lives in
+    the type parameter; there is no `if self.state == Open` runtime
+    guard. pv validates the YAML at CI time.
+  references:
+  - 'Typestate in Rust: https://cliffle.com/blog/rust-typestate/'
+  - 'PhantomData: https://doc.rust-lang.org/std/marker/struct.PhantomData.html'
+  - 'aprender-contracts: https://github.com/paiml/aprender'
+equations:
+  connection_state_machine:
+    formula: |
+      Connection<Closed>::open()                         -> Connection<Open>
+      Connection<Open>::authenticate(user)               -> Connection<Authenticated>
+      Connection<Authenticated>::query(sql)              -> &str
+      Connection<Authenticated>::close()                 -> Connection<Closed>
+      Connection<Closed>::query(...)                     -> TYPE-ERROR (E0599 no method)
+      Connection<Open>::query(...)                       -> TYPE-ERROR (E0599 no method)
+    domain: Connection<S> for S in {Closed, Open, Authenticated}
+    codomain: Connection<S'> where S' is the legal successor state, or &str
+    invariants:
+    - query is callable only on Connection<Authenticated>
+    - transitions are consume-return (no &mut self)
+    - state markers are zero-sized (PhantomData<S>)
+    - no runtime state check (no `if self.state == Open`) anywhere in the crate
+    - calling query on a non-authenticated state is a compile error, not a panic
+    preconditions:
+    - the connection is in the source state required by the transition
+    - the source-state value is moved (not borrowed) into the transition
+    postconditions:
+    - the returned connection is in the legal successor state
+    - the source connection value is no longer accessible (moved)
+    - query returns a result row string only on Authenticated
+    lean_theorem: Theorems.ConnectionTypestate
+    guarantees:
+      shapes:
+        output: { dims: ["1"] }
+      constraints:
+      - transition output type encodes the new state
+      - query output is &str, not Result<&str, AuthError>
+proof_obligations:
+- type: invariant
+  property: query requires Authenticated
+  formal: forall S != Authenticated, Connection<S>::query(_) does not type-check
+  applies_to: all
+- type: invariant
+  property: transitions are consume-return
+  formal: 'every transition method takes `self` by value, not &mut self'
+  applies_to: all
+- type: invariant
+  property: state markers are zero-sized
+  formal: size_of::<Closed>() == 0 AND size_of::<Open>() == 0 AND size_of::<Authenticated>() == 0
+  applies_to: all
+- type: invariant
+  property: no runtime state check
+  formal: 'm3-typestate crate contains zero `if self.state ==` patterns'
+  applies_to: all
+- type: postcondition
+  property: open transitions Closed to Open
+  formal: typeof(Connection<Closed>::open()) == Connection<Open>
+  applies_to: connection_state_machine
+- type: postcondition
+  property: authenticate transitions Open to Authenticated
+  formal: typeof(Connection<Open>::authenticate(_)) == Connection<Authenticated>
+  applies_to: connection_state_machine
+falsification_tests:
+- id: FALSIFY-CONN-001
+  rule: query requires Authenticated
+  prediction: 'source containing `Connection::<Closed>::new("h").query("SELECT 1")` fails `cargo build` with E0599'
+  test: trybuild compile-fail fixture in tests/compile-fail/query-on-closed.rs
+  if_fails: rustc resolves query on Connection<Closed> (someone added a generic impl)
+- id: FALSIFY-CONN-002
+  rule: query requires Authenticated
+  prediction: 'source containing `conn.open().query("SELECT 1")` fails `cargo build` with E0599'
+  test: trybuild compile-fail fixture in tests/compile-fail/query-on-open.rs
+  if_fails: query was made available on Connection<Open>
+- id: FALSIFY-CONN-003
+  rule: transitions are consume-return
+  prediction: '`grep -nE "fn (open|authenticate|close)\s*\(\s*&" src/lib.rs` returns nothing'
+  test: shell grep in CI
+  if_fails: A transition method takes &self or &mut self; the typestate is no longer enforced by move semantics
+- id: FALSIFY-CONN-004
+  rule: state markers are zero-sized
+  prediction: size_of::<Closed>() + size_of::<Open>() + size_of::<Authenticated>() == 0
+  test: static_assertions::const_assert_eq in tests
+  if_fails: A state marker grew a field; the contract no longer has zero overhead
+- id: FALSIFY-CONN-005
+  rule: no runtime state check
+  prediction: '`grep -rnE "if .*state\s*==" src/` returns nothing'
+  test: shell grep in CI
+  if_fails: Someone added a runtime fallback; the typestate is no longer the sole enforcement
+- id: FALSIFY-CONN-006
+  rule: authenticate transitions Open to Authenticated
+  prediction: 'typeof(Connection::<Closed>::new("h").open().authenticate("u")) == Connection<Authenticated>'
+  test: type-equality assertion in m3-typestate/tests/type_eq.rs
+  if_fails: authenticate returned the wrong state type (broken transition)
+kani_harnesses:
+- id: KANI-CONN-001
+  obligation: query requires Authenticated
+  bound: 4
+  strategy: bounded_int
+  solver: cadical
+qa_gate:
+  id: F-CONN-001
+  name: connection-v1 Contract
+  description: Quality gate for the Connection<S> typestate used in M3 demo
+  checks:
+  - validation
+  - falsification
+  - compile-fail-trybuild
