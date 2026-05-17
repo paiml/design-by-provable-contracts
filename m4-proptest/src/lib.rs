@@ -193,3 +193,37 @@ mod tests {
         );
     }
 }
+
+// L4 model-checking harness for the safe-div-v1 contract. Bounded to
+// |a|, |b| <= 16 per KANI-DV-001 — small enough to solve in seconds
+// on cadical (cbmc would otherwise enumerate 2^64 pairs over the full
+// i32 domain). The bound includes the divide-by-zero edge (b = 0) and
+// is large enough to cover the totality claim in practice. The Lean
+// theorem in `lean/ProvableContracts/Theorems/SafeDiv.lean` discharges
+// the universal claim at L5.
+//
+// Run with `cargo kani -p m4-proptest`.
+#[cfg(kani)]
+mod verification {
+    use super::safe_div;
+
+    /// KANI-DV-001 — safe_div is total over (i32, i32) bounded to
+    /// |a|, |b| <= 16: never panics, returns None on b == 0, returns
+    /// Some(a / b) otherwise. The i32::MIN / -1 overflow case lies
+    /// outside this bound and is proven by the L5 Lean theorem.
+    #[kani::proof]
+    #[kani::solver(cadical)]
+    fn kani_safe_div_totality() {
+        let a: i32 = kani::any();
+        let b: i32 = kani::any();
+        kani::assume(a >= -16 && a <= 16);
+        kani::assume(b >= -16 && b <= 16);
+
+        let r = safe_div(a, b);
+        if b == 0 {
+            assert!(r.is_none());
+        } else {
+            assert_eq!(r, Some(a / b));
+        }
+    }
+}
