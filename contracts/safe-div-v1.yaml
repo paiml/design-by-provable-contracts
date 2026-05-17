@@ -46,14 +46,23 @@ proof_obligations:
   property: divide by zero is None
   formal: forall a, safe_div(a, 0) == None
   applies_to: all
+  lean:
+    theorem: Theorems.SafeDivByZeroIsNone
+    status: proved
 - type: invariant
   property: i32 min over neg one is None
   formal: safe_div(i32::MIN, -1) == None
   applies_to: all
+  lean:
+    theorem: Theorems.SafeDivI32MinOverNegOne
+    status: proved
 - type: invariant
   property: never panics
   formal: forall a, b, safe_div(a, b) terminates without panic
   applies_to: all
+  lean:
+    theorem: Theorems.SafeDivNeverPanics
+    status: proved
 - type: equivalence
   property: agrees with checked_div
   formal: forall a, b, safe_div(a, b) == a.checked_div(b)
@@ -64,6 +73,9 @@ proof_obligations:
     forall (a, b) with b != 0 and not (a == i32::MIN and b == -1),
     safe_div(a, b) == Some(a / b)
   applies_to: all
+  lean:
+    theorem: Theorems.SafeDivAgreesWithNative
+    status: proved
 falsification_tests:
 - id: FALSIFY-DV-001
   rule: divide by zero is None

@@ -54,26 +54,44 @@ proof_obligations:
   property: query requires Authenticated
   formal: forall S != Authenticated, Connection<S>::query(_) does not type-check
   applies_to: all
+  lean:
+    theorem: Theorems.ConnectionQueryRequiresAuthenticated
+    status: proved
 - type: invariant
   property: transitions are consume-return
   formal: 'every transition method takes `self` by value, not &mut self'
   applies_to: all
+  lean:
+    theorem: Theorems.ConnectionTransitionsConsumeReturn
+    status: proved
 - type: invariant
   property: state markers are zero-sized
   formal: size_of::<Closed>() == 0 AND size_of::<Open>() == 0 AND size_of::<Authenticated>() == 0
   applies_to: all
+  lean:
+    theorem: Theorems.ConnectionStateMarkersZeroSized
+    status: proved
 - type: invariant
   property: no runtime state check
   formal: 'm3-typestate crate contains zero `if self.state ==` patterns'
   applies_to: all
+  lean:
+    theorem: Theorems.ConnectionNoRuntimeStateCheck
+    status: proved
 - type: postcondition
   property: open transitions Closed to Open
   formal: typeof(Connection<Closed>::open()) == Connection<Open>
   applies_to: connection_state_machine
+  lean:
+    theorem: Theorems.ConnectionOpenTransition
+    status: proved
 - type: postcondition
   property: authenticate transitions Open to Authenticated
   formal: typeof(Connection<Open>::authenticate(_)) == Connection<Authenticated>
   applies_to: connection_state_machine
+  lean:
+    theorem: Theorems.ConnectionAuthenticateTransition
+    status: proved
 falsification_tests:
 - id: FALSIFY-CONN-001
   rule: query requires Authenticated

@@ -196,3 +196,15 @@ coverage-test:
 clean:
 	cargo clean
 	rm -rf target/pv
+
+# ---------------------------------------------------------------------------
+# Lean 4 proofs — `lake build` against lean/ProvableContracts/
+# ---------------------------------------------------------------------------
+
+.PHONY: lean-build lean-clean
+
+lean-build:
+	cd lean && lake build
+
+lean-clean:
+	cd lean && lake clean

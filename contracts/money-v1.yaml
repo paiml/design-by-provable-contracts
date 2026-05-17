@@ -48,22 +48,37 @@ proof_obligations:
   property: addition is closed under currency
   formal: 'forall a, b in Money<C>, (a + b) in Money<C>'
   applies_to: all
+  lean:
+    theorem: Theorems.MoneyAddClosed
+    status: proved
 - type: invariant
   property: mixed-currency rejected at compile time
   formal: 'Money<Usd> + Money<Eur> does not type-check'
   applies_to: all
+  lean:
+    theorem: Theorems.MoneyMixedCurrencyRejected
+    status: proved
 - type: invariant
   property: zero runtime currency checks
   formal: 'm2-newtype crate contains zero `if currency != other.currency`'
   applies_to: all
+  lean:
+    theorem: Theorems.MoneyZeroRuntimeChecks
+    status: proved
 - type: postcondition
   property: amount is the Decimal sum
   formal: '(lhs + rhs).amount() == lhs.amount() + rhs.amount()'
   applies_to: money_add
+  lean:
+    theorem: Theorems.MoneyAmountIsDecimalSum
+    status: proved
 - type: postcondition
   property: currency tag is preserved
   formal: 'typeof(lhs + rhs) == typeof(lhs) == typeof(rhs)'
   applies_to: money_add
+  lean:
+    theorem: Theorems.MoneyCurrencyTagPreserved
+    status: proved
 falsification_tests:
 - id: FALSIFY-MONEY-001
   rule: addition is closed under currency
