@@ -20,3 +20,4 @@ contracts/.pv/
 # proptest persistence
 proptest-regressions/
 **/proptest-regressions/
+lean/.lake/
