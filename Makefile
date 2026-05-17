@@ -172,7 +172,8 @@ demo:
 	@echo ""
 	@echo "=== M4 proptest: safe_div over i32 x i32 ==="
 	@cargo run --release --bin safediv-demo -- 10 2
-	@cargo run --release --bin safediv-demo -- 5 0
+	@# exit 3 = contract holds with None (divide-by-zero guard fired)
+	@cargo run --release --bin safediv-demo -- 5 0 || [ $$? -eq 3 ]
 
 test:
 	cargo test --workspace --release
