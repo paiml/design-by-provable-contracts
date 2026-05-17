@@ -16,3 +16,9 @@ path = "src/main.rs"
 
 [dev-dependencies]
 proptest = "1"
+
+# `--cfg kani` is set by `cargo kani`; register it so `cargo build`
+# under Rust 1.80+ doesn't flag the `#[cfg(kani)]` verification module
+# as an unexpected cfg (clippy -D warnings would otherwise fail CI).
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
