@@ -1,3 +1,6 @@
+.DELETE_ON_ERROR:
+.SUFFIXES:
+
 .PHONY: help install validate explain score lint audit status graph codegen \
         kani-stubs lean-stubs probar-stubs invariants scaffold generate \
         proof-status coverage demo test build fmt fmt-check clippy \
@@ -56,9 +59,11 @@ help:
 # ---------------------------------------------------------------------------
 
 install:
-	@command -v $(PV) >/dev/null 2>&1 \
-		&& echo "[install] pv already on PATH ($$($(PV) --version 2>&1 | head -1))" \
-		|| cargo install aprender-contracts-cli
+	@if command -v $(PV) >/dev/null 2>&1; then \
+		echo "[install] pv already on PATH ($$($(PV) --version 2>&1 | head -1))"; \
+	else \
+		cargo install aprender-contracts-cli || exit 1; \
+	fi
 
 # ---------------------------------------------------------------------------
 # pv contract gates — every one runs against every contract.
@@ -102,15 +107,14 @@ kani-stubs:
 	@for c in $(CONTRACTS); do \
 		out=target/pv/$$(basename $$c .yaml)-kani.rs; \
 		echo "--- pv kani $$c -> $$out ---"; \
-		$(PV) kani $$c --output $$out || true; \
+		$(PV) kani $$c > $$out; \
 	done
 
 lean-stubs:
-	@mkdir -p target/pv
+	@mkdir -p target/pv/lean
 	@for c in $(CONTRACTS); do \
-		out=target/pv/$$(basename $$c .yaml).lean; \
-		echo "--- pv lean $$c -> $$out ---"; \
-		$(PV) lean $$c --output $$out || true; \
+		echo "--- pv lean $$c -> target/pv/lean/ ---"; \
+		$(PV) lean $$c --output-dir target/pv/lean; \
 	done
 
 probar-stubs:
@@ -118,7 +122,7 @@ probar-stubs:
 	@for c in $(CONTRACTS); do \
 		out=target/pv/$$(basename $$c .yaml)-probar.rs; \
 		echo "--- pv probar $$c -> $$out ---"; \
-		$(PV) probar $$c --output $$out || true; \
+		$(PV) probar $$c > $$out; \
 	done
 
 invariants:
@@ -126,7 +130,7 @@ invariants:
 	@for c in $(CONTRACTS); do \
 		out=target/pv/$$(basename $$c .yaml)-invariants.rs; \
 		echo "--- pv invariants $$c -> $$out ---"; \
-		$(PV) invariants $$c --output $$out || true; \
+		$(PV) invariants $$c > $$out; \
 	done
 
 scaffold:
@@ -134,14 +138,15 @@ scaffold:
 	@for c in $(CONTRACTS); do \
 		out=target/pv/$$(basename $$c .yaml)-scaffold.rs; \
 		echo "--- pv scaffold $$c -> $$out ---"; \
-		$(PV) scaffold $$c --output $$out || true; \
+		$(PV) scaffold $$c > $$out; \
 	done
 
 generate:
-	@mkdir -p target/pv
+	@mkdir -p target/pv/generated
 	@for c in $(CONTRACTS); do \
-		echo "--- pv generate $$c (all artifacts) ---"; \
-		$(PV) generate $$c --output-dir target/pv/ || true; \
+		base=$$(basename $$c .yaml); \
+		echo "--- pv generate $$c -> target/pv/generated/$$base/ ---"; \
+		$(PV) generate $$c --output target/pv/generated/$$base; \
 	done
 
 # ---------------------------------------------------------------------------
@@ -167,7 +172,8 @@ demo:
 	@echo ""
 	@echo "=== M4 proptest: safe_div over i32 x i32 ==="
 	@cargo run --release --bin safediv-demo -- 10 2
-	@cargo run --release --bin safediv-demo -- 5 0
+	@# exit 3 = contract holds with None (divide-by-zero guard fired)
+	@cargo run --release --bin safediv-demo -- 5 0 || [ $$? -eq 3 ]
 
 test:
 	cargo test --workspace --release
@@ -194,8 +200,8 @@ coverage-test:
 	cargo llvm-cov --workspace --release --fail-under-lines 100
 
 clean:
-	cargo clean
-	rm -rf target/pv
+	cargo clean || exit 1
+	rm -rf target/pv || exit 1
 
 # ---------------------------------------------------------------------------
 # Lean 4 proofs — `lake build` against lean/ProvableContracts/
